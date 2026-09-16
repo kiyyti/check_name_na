@@ -1,0 +1,59 @@
+{
+  "Settings": [
+    "key|text|รหัสการตั้งค่า ห้ามซ้ำ",
+    "value|text|ค่าการตั้งค่า",
+    "description|text|คำอธิบาย"
+  ],
+  "Students": [
+    "student_id|id|รหัสผู้เรียนถาวร ห้ามซ้ำ ไม่ใช้เลขแถว",
+    "student_code|text|รหัสนักเรียน/นักศึกษา ห้ามซ้ำ เก็บเลขศูนย์นำหน้า",
+    "full_name|text|ชื่อและนามสกุล",
+    "group_name|text|ห้องหรือกลุ่มเรียน เว้นว่างได้หากมีหนึ่งกลุ่ม",
+    "status|enum|active / inactive",
+    "enrolled_on|date|วันที่เริ่มเรียนวิชานี้",
+    "withdrawn_on|date|วันที่พ้นสภาพในวิชานี้ เว้นว่างได้",
+    "class_level|text|ระดับชั้น ต้องตรงกับรายการที่ให้เลือกบนเว็บ"
+  ],
+  "Sessions": [
+    "session_id|id|รหัสรอบเรียน ห้ามซ้ำ แม้มีหลายรอบในวันเดียวกัน",
+    "session_number|integer|ครั้งที่เรียน เช่น 1, 2, 3",
+    "topic|text|หัวข้อที่เรียน เว้นว่างได้",
+    "group_name|text|กลุ่มที่เรียนรอบนี้ ว่างหมายถึงทุกกลุ่ม",
+    "starts_at|datetime|วันเวลาเริ่มเรียน เวลาไทย",
+    "ends_at|datetime|วันเวลาจบเรียน ต้องหลังเวลาเริ่ม",
+    "checkin_opens_at|datetime|วันเวลาเปิดเช็คชื่อ หากให้ผู้เรียนเช็คเอง",
+    "checkin_closes_at|datetime|วันเวลาปิดเช็คชื่อ หากให้ผู้เรียนเช็คเอง",
+    "status|enum|draft / open / closed / cancelled",
+    "class_level|text|ระดับชั้นที่เรียนรอบนี้ เว้นว่างหมายถึงทุกระดับ"
+  ],
+  "Attendance": [
+    "attendance_id|id|รหัสรายการ ห้ามซ้ำ",
+    "session_id|id|อ้างอิง Sessions หนึ่งคู่ session_id กับ student_id มีหนึ่งรายการ",
+    "student_id|id|อ้างอิง Students ต้องตรวจกลุ่มและช่วงวันที่มีสิทธิ์เรียน",
+    "status|enum|present / late / absent / excused",
+    "checked_at|datetime|เวลาที่เช็คจริงจากเซิร์ฟเวอร์ ขาด/ลาอาจไม่มีค่า",
+    "method|enum|teacher / self / qr / system",
+    "recorded_by|text|self-reported เมื่อผู้เรียนกรอกชื่อหรือรหัสเอง ไม่ใช่บัญชียืนยันตัวตน",
+    "request_id|id|ใช้รหัสเดิมเมื่อส่งคำขอซ้ำ เซิร์ฟเวอร์ต้องกันข้อมูลซ้ำ",
+    "note|text|หมายเหตุหรือเหตุผลการลา เก็บเฉพาะที่จำเป็น",
+    "created_at|datetime|เวลาสร้างรายการโดยเซิร์ฟเวอร์",
+    "updated_at|datetime|เวลาแก้ไขล่าสุดโดยเซิร์ฟเวอร์",
+    "class_level|text|ระดับชั้น ณ เวลาเช็คชื่อ",
+    "latitude|number|ละติจูดจากอุปกรณ์",
+    "longitude|number|ลองจิจูดจากอุปกรณ์",
+    "accuracy_m|number|ความคลาดเคลื่อนพิกัด หน่วยเมตร",
+    "distance_m|number|ระยะห่างจากจุดห้องเรียนที่เซิร์ฟเวอร์คำนวณ หน่วยเมตร",
+    "location_status|enum|inside / not_checked"
+  ],
+  "AuditLog": [
+    "audit_id|id|รหัสประวัติ ห้ามซ้ำ",
+    "occurred_at|datetime|เวลาดำเนินการ",
+    "actor_id|text|รหัสผู้ใช้ที่ยืนยันตัวตนแล้ว",
+    "action|enum|create / update / correct / close_session / cancel_session",
+    "entity_type|text|Students / Sessions / Attendance / Settings",
+    "entity_id|id|รหัสรายการที่ได้รับผล",
+    "before_json|text|ค่าก่อนแก้ เฉพาะช่องที่เปลี่ยน ไม่เก็บความลับ",
+    "after_json|text|ค่าหลังแก้ เฉพาะช่องที่เปลี่ยน",
+    "reason|text|เหตุผลการแก้ผลเช็คชื่อ"
+  ]
+}

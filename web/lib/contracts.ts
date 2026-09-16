@@ -1,0 +1,4 @@
+import {z} from 'zod';
+export const configSchema=z.object({ready:z.boolean(),message:z.string().optional(),levels:z.array(z.string()),room:z.string().optional(),course:z.string().optional()});
+export const receiptSchema=z.object({status:z.enum(['present','late','absent','excused']),recordedAt:z.string().datetime(),duplicate:z.boolean().optional()});
+export const gatewaySchema=z.object({ok:z.boolean(),code:z.string().optional(),message:z.string().optional(),config:configSchema.optional(),receipt:receiptSchema.optional()});
