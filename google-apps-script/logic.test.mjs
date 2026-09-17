@@ -134,7 +134,61 @@ test('login throttling persists between requests and unlocks after the window',(
 });
 test('invalid API secret cannot read admin data or mutate any sheets',()=>{
  const {ctx,data}=adminSetup();
- for(const action of ['adminRead','adminSaveStudent','adminSaveSession','adminSaveSettings','adminAttendance','adminLoginAttempt']){
+ for(const action of ['adminRead','adminSaveStudent','adminSaveSession','adminSaveSettings','adminAttendance','adminLoginAttempt','adminCapabilities']){
   const result=JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({action,secret:'wrong',payload:studentDraft()})}}));assert.equal(result.code,'UNAUTHORIZED');assert.equal(result.data,undefined);
  }assert.equal(data.AuditLog.length,1);assert.equal(data.Students.length,2);
+});
+
+test('multi-level session saves canonical selections and returns only the chosen roster',()=>{
+ const {ctx,db,put}=adminSetup();
+ put('Students',{student_id:'third',student_code:'0003',full_name:'Year three',class_level:'ปวช.3',status:'active'});
+ put('Students',{student_id:'second',student_code:'0002',full_name:'Year two',class_level:'ปวช.2',status:'active'});
+ ctx.adminAction_(db,'adminSaveSession',{...sessionDraft(),class_level:' ปวช.1, ปวช.3, ปวช.1 '},when('08:00:00'));
+ const row=ctx.table_(db,'Sessions').rows.find(r=>r.session_id==='afternoon');assert.equal(row.class_level,'ปวช.1, ปวช.3');
+ const data=ctx.adminRead_(db,{sessionId:'afternoon'},when('13:00:00')).data;
+ assert.deepEqual(Array.from(data.eligibleStudentIds).sort(),['s1','third']);
+});
+test('students in either selected level can check in; unselected levels cannot',()=>{
+ const {ctx,db,put,config,payload}=adminSetup();
+ put('Students',{student_id:'third',student_code:'0003',full_name:'Year three',class_level:'ปวช.3',status:'active'});
+ put('Students',{student_id:'second',student_code:'0002',full_name:'Year two',class_level:'ปวช.2',status:'active'});
+ ctx.adminAction_(db,'adminSaveSession',{...sessionDraft(),class_level:'ปวช.1, ปวช.3'},when('08:00:00'));
+ assert.equal(ctx.checkIn_(db,config,{...payload,latitude:19,longitude:100},when('13:05:00')).ok,true);
+ assert.equal(ctx.checkIn_(db,config,{...payload,identity:'0003',level:'ปวช.3',requestId:randomUUID(),latitude:19,longitude:100},when('13:05:00')).ok,true);
+ assert.throws(()=>ctx.checkIn_(db,config,{...payload,identity:'0002',level:'ปวช.2',requestId:randomUUID(),latitude:19,longitude:100},when('13:05:00')),e=>e.code==='NO_SESSION');
+ assert.equal(ctx.table_(db,'Attendance').rows.length,2);
+});
+test('multi-level absence sweep includes only selected, active and eligible students',()=>{
+ const {ctx,db,put}=adminSetup();
+ put('Students',{student_id:'third',student_code:'0003',class_level:'ปวช.3',status:'active'});
+ put('Students',{student_id:'second',class_level:'ปวช.2',status:'active'});
+ put('Students',{student_id:'inactive',class_level:'ปวช.3',status:'inactive'});
+ put('Students',{student_id:'future',class_level:'ปวช.3',status:'active',enrolled_on:when('13:00:00').getTime()+86400000});
+ ctx.adminAction_(db,'adminSaveSession',{...sessionDraft(),class_level:'ปวช.1, ปวช.3'},when('08:00:00'));
+ ctx.Date=class extends Date{constructor(...args){super(...(args.length?args:[when('13:15:00').getTime()]));}};
+ ctx.finalizeAbsences();ctx.finalizeAbsences();
+ const ids=ctx.table_(db,'Attendance').rows.filter(r=>r.session_id==='afternoon').map(r=>r.student_id);
+ assert.deepEqual(Array.from(ids).sort(),['s1','third']);
+});
+test('overlap detection compares intersections rather than the whole level string',()=>{
+ const {ctx,db}=adminSetup(),base=sessionDraft();
+ ctx.adminAction_(db,'adminSaveSession',{...base,class_level:'ปวช.1, ปวช.3'},when('08:00:00'));
+ for(const level of ['ปวช.3','ปวช.2, ปวช.3',''])assert.throws(()=>ctx.adminAction_(db,'adminSaveSession',{...base,session_id:'conflict',class_level:level},when('08:00:00')),e=>e.code==='BAD_INPUT');
+ assert.equal(ctx.adminAction_(db,'adminSaveSession',{...base,session_id:'disjoint',class_level:'ปวช.2'},when('08:00:00')).ok,true);
+});
+test('wildcard and legacy single-level sessions remain compatible, with group restrictions',()=>{
+ const {ctx,db}=adminSetup(),session=ctx.table_(db,'Sessions').rows[0],student=ctx.table_(db,'Students').rows[0];
+ assert.equal(ctx.eligible_(student,session),true);
+ assert.equal(ctx.eligible_({...student,class_level:'ปวช.10'},{...session,class_level:'ปวช.1, ปวช.3'}),false);
+ assert.equal(ctx.eligible_({...student,class_level:'ปวช.3'},{...session,class_level:''}),true);
+ assert.equal(ctx.eligible_(student,{...session,class_level:'ปวช.1, ปวช.3',group_name:'other'}),false);
+});
+test('malformed multi-level values never turn into all-level access',()=>{
+ const {ctx,db,data}=adminSetup();
+ for(const value of [',','ปวช.1,',',ปวช.3','ปวช.1,,ปวช.3'])assert.throws(()=>ctx.adminAction_(db,'adminSaveSession',{...sessionDraft(),class_level:value},when('08:00:00')),e=>e.code==='BAD_INPUT');
+ assert.equal(data.Sessions.length,2);
+});
+test('authenticated capability probe advertises support without student data',()=>{
+ const {ctx}=adminSetup();const result=JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({action:'adminCapabilities',secret:'secret'.repeat(10)})}}));
+ assert.equal(result.capabilities.multiLevelSessions,true);assert.equal(result.data,undefined);
 });

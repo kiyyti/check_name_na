@@ -1,6 +1,7 @@
 import {adminUser,privateHeaders,sameOrigin} from '@/lib/admin-auth';
 import {adminSheets} from '@/lib/sheets-gateway';
 import {adminMutation} from '@/lib/admin-contracts';
+import {classLevels} from '@/lib/class-levels.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
@@ -18,6 +19,14 @@ export async function POST(req:Request){
  try{
   const body=await req.text();if(body.length>24000)return Response.json({ok:false},{status:413,headers:privateHeaders});
   const parsed=adminMutation.safeParse(JSON.parse(body));if(!parsed.success)return Response.json({ok:false,message:'กรอกข้อมูลให้ครบและตรวจวันเวลา/ตัวเลขให้ถูกต้อง'},{status:400,headers:privateHeaders});
+  if(parsed.data.action==='adminSaveSession'){
+   const levels=classLevels(parsed.data.payload.class_level);
+   parsed.data.payload.class_level=levels.join(', ');
+   if(levels.length>1){
+    const capability=await adminSheets('adminCapabilities');
+    if(!capability.ok||!capability.capabilities?.multiLevelSessions)return Response.json({ok:false,message:'กรุณาอัปเดต Code.gs และ Deploy เวอร์ชันใหม่ของ Apps Script ก่อนบันทึกรอบที่เลือกหลายระดับชั้น'},{status:503,headers:privateHeaders});
+   }
+  }
   const result=await adminSheets(parsed.data.action,{...parsed.data.payload,actor});
   return Response.json(result,{status:result.ok?200:result.code==='CONFLICT'?409:400,headers:privateHeaders});
  }catch{return Response.json({ok:false,message:'ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดข้อมูลล่าสุดก่อนลองใหม่'},{status:503,headers:privateHeaders});}

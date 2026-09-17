@@ -56,9 +56,16 @@ function sessionWindow_(r){
  const start=date_(r.starts_at),end=date_(r.ends_at),open=date_(r.checkin_opens_at),close=date_(r.checkin_closes_at);
  return start&&end&&open&&close&&end>start&&close>open&&open<=start?{start,end,open,close}:null;
 }
+function sessionLevels_(session){
+ const raw=text_(session.class_level);if(!raw)return [];
+ const parts=raw.split(',').map(text_);
+ if(raw.length>2000||parts.some(level=>!level||level.length>50))fail_('BAD_INPUT','ระดับชั้นของรอบเรียนไม่ถูกต้อง');
+ const levels=[...new Set(parts)];if(levels.length>30)fail_('BAD_INPUT','เลือกระดับชั้นได้ไม่เกิน 30 ระดับ');return levels;
+}
+function levelsOverlap_(a,b){const left=sessionLevels_(a),right=sessionLevels_(b);return !left.length||!right.length||left.some(level=>right.includes(level));}
 function eligible_(student,session){
  const w=sessionWindow_(session);if(!w||text_(student.status)!=='active')return false;
- if(text_(session.class_level)&&text_(student.class_level)!==text_(session.class_level))return false;
+ const levels=sessionLevels_(session);if(levels.length&&!levels.includes(text_(student.class_level)))return false;
  if(text_(session.group_name)&&text_(student.group_name)!==text_(session.group_name))return false;
  const enroll=date_(student.enrolled_on),withdraw=date_(student.withdrawn_on),day=day_(w.start);
  return (!enroll||day_(enroll)<=day)&&(!withdraw||day_(withdraw)>day);
@@ -101,6 +108,7 @@ function doPost(e){
   const body=JSON.parse(e.postData.contents),secret=PropertiesService.getScriptProperties().getProperty('API_SECRET');
   if(!secret||secret.length<32||body.secret!==secret)fail_('UNAUTHORIZED','ไม่สามารถเข้าถึงระบบได้');
   const now=new Date();
+  if(body.action==='adminCapabilities')return json_({ok:true,capabilities:{multiLevelSessions:true}});
   if(body.action==='adminLoginAttempt')return json_(adminLoginAttempt_(body.payload,now));
   const db=db_();
   if(['adminRead','adminSaveStudent','adminSaveSession','adminSaveSettings','adminAttendance'].includes(body.action))return json_(adminAction_(db,body.action,body.payload||{},now));
@@ -185,11 +193,11 @@ function adminAction_(db,action,p,now){
    write_(t,row,before&&before._row);audit_(db,'Students',id,before,row,actor,'',now);
   }else if(action==='adminSaveSession'){
    let t=table_(db,'Sessions');const id=requiredText_(p,'session_id'),before=t.rows.find(r=>text_(r.session_id)===id);checkVersion_(before,p._version);
-   const row=Object.assign({},before||{},{session_id:id,session_number:Number(p.session_number),topic:text_(p.topic),group_name:text_(p.group_name),class_level:text_(p.class_level),status:p.status,room_name:requiredText_(p,'room_name')});
+   const row=Object.assign({},before||{},{session_id:id,session_number:Number(p.session_number),topic:text_(p.topic),group_name:text_(p.group_name),class_level:sessionLevels_(p).join(', '),status:p.status,room_name:requiredText_(p,'room_name')});
    ['starts_at','ends_at','checkin_opens_at','checkin_closes_at','late_at','absence_at'].forEach(k=>row[k]=thaiDateTime_(p[k]));
    ['latitude','longitude','radius_m','max_accuracy_m'].forEach(k=>{requiredText_(p,k);row[k]=Number(p[k]);});geometry_(row);
    const w=sessionWindow_(row);if(!w||!Number.isInteger(row.session_number)||row.session_number<1||!['draft','open','closed','cancelled'].includes(row.status)||row.late_at<w.start||row.absence_at<=row.late_at||row.absence_at>w.close||row.absence_at>w.end||day_(w.open)!==day_(w.start)||day_(w.close)!==day_(w.start)||day_(w.end)!==day_(w.start))fail_('BAD_INPUT','ตรวจลำดับเวลา: เปิด ≤ เริ่ม ≤ สาย < ขาด ≤ ปิดและจบเรียน โดยใช้วันเดียวกัน');
-   if(row.status==='open'&&t.rows.some(r=>{const other=sessionWindow_(r);return text_(r.session_id)!==id&&r.status==='open'&&other&&(!text_(r.class_level)||!row.class_level||text_(r.class_level)===row.class_level)&&(!text_(r.group_name)||!row.group_name||text_(r.group_name)===row.group_name)&&w.open<=other.close&&w.close>=other.open;}))fail_('BAD_INPUT','ช่วงเปิดเช็คชื่อซ้อนกับรอบของระดับชั้น/กลุ่มเดียวกัน กรุณาปรับเวลา');
+   if(row.status==='open'&&t.rows.some(r=>{const other=sessionWindow_(r);return text_(r.session_id)!==id&&r.status==='open'&&other&&levelsOverlap_(r,row)&&(!text_(r.group_name)||!row.group_name||text_(r.group_name)===row.group_name)&&w.open<=other.close&&w.close>=other.open;}))fail_('BAD_INPUT','ช่วงเปิดเช็คชื่อซ้อนกับรอบของระดับชั้น/กลุ่มเดียวกัน กรุณาปรับเวลา');
    t=ensureSessionColumns_(db);write_(t,row,before&&before._row);audit_(db,'Sessions',id,before,row,actor,'',now);
   }else if(action==='adminSaveSettings'){
    const before=settingsMap_(db);checkVersion_(before,p._version);

@@ -4,7 +4,7 @@ import {adminGatewaySchema} from './admin-contracts';
 export async function sheets(action:'config'|'checkIn',payload:unknown={}){
  return gatewaySchema.parse(await callSheets(action,payload));
 }
-export async function adminSheets(action:'adminRead'|'adminSaveStudent'|'adminSaveSession'|'adminSaveSettings'|'adminAttendance'|'adminLoginAttempt',payload:unknown={}){
+export async function adminSheets(action:'adminRead'|'adminSaveStudent'|'adminSaveSession'|'adminSaveSettings'|'adminAttendance'|'adminLoginAttempt'|'adminCapabilities',payload:unknown={}){
  return adminGatewaySchema.parse(await callSheets(action,payload));
 }
 async function callSheets(action:string,payload:unknown){

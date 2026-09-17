@@ -30,6 +30,12 @@ test('admin HTTP authentication, origin checks, validation and logout',async()=>
   assert.equal((await post('/api/admin/data',{action:'adminSaveStudent',payload},cookie,'https://foreign.invalid')).status,403);
   assert.equal((await post('/api/admin/data',{action:'adminSaveStudent',payload},cookie)).status,200);
   const saved=await (await get('/api/admin/data',cookie)).json();assert.equal(saved.data.students[0].actor,'test_admin');
+  const session={session_id:'multi-test',session_number:'1',topic:'Test',group_name:'',class_level:' ปวช.1, ปวช.3, ปวช.1 ',starts_at:'2026-09-17T08:00',ends_at:'2026-09-17T10:00',checkin_opens_at:'2026-09-17T07:30',checkin_closes_at:'2026-09-17T10:00',late_at:'2026-09-17T08:30',absence_at:'2026-09-17T09:00',status:'draft',room_name:'Test room',latitude:'18',longitude:'99',radius_m:'100',max_accuracy_m:'30',_version:''};
+  const unsupported=await post('/api/admin/data',{action:'adminSaveSession',payload:session},cookie);assert.equal(unsupported.status,503);assert.match((await unsupported.json()).message,/Apps Script/);
+  assert.equal((await (await get('/api/admin/data',cookie)).json()).data.sessions.length,0);
+  assert.equal((await post('/api/admin/data',{action:'adminSaveSession',payload:session},cookie)).status,200);
+  const multi=await (await get('/api/admin/data',cookie)).json();assert.equal(multi.data.sessions[0].class_level,'ปวช.1, ปวช.3');
+  assert.equal((await post('/api/admin/data',{action:'adminSaveSession',payload:{...session,class_level:','}},cookie)).status,400);
   const expired=issueSession('test_admin',hash,secret,Date.now()-(SESSION_SECONDS+10)*1000);assert.equal((await get('/api/admin/data','checknamena_admin='+expired)).status,401);
   const logout=await post('/api/admin/logout',{},cookie);assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie'),/Max-Age=0/i);
   assert.equal((await get('/api/admin/data')).status,401);

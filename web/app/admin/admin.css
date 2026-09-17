@@ -30,3 +30,12 @@
  .admin-editor,#attendance-correction{scroll-margin-top:100px}
 }
 @media(max-width:380px){.admin-nav-top .admin-brand{font-size:17px}.admin-nav-account .admin-button{font-size:11px;gap:4px}.admin-nav-account .admin-logout-label{display:none}.admin-nav-toggle{gap:4px;padding:7px}.admin-nav-top{gap:6px}}
+.admin-level-field{grid-column:1/-1}
+.admin-root .admin-level-picker{margin-top:16px;border:1px solid #d8e1ee;border-radius:12px;padding:14px 16px}
+.admin-level-picker legend{padding:0 6px;font-size:14px;font-weight:600}
+.admin-level-options{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.admin-root .admin-level-option{display:inline-flex;align-items:center;gap:9px;margin:0;padding:10px 13px;background:#f6f8fc;border:1px solid #e1e7f1;border-radius:9px;font-size:14px;font-weight:400;cursor:pointer}
+.admin-root .admin-level-option.selected{background:#eaf0ff;border-color:#a9bef3;color:#2655d9}
+.admin-root .admin-level-all{margin-top:10px;background:#fff}
+.admin-root .admin-level-option input[type="checkbox"]{appearance:auto;width:18px!important;height:18px;min-height:18px!important;flex-shrink:0;padding:0!important;margin:0;border-radius:4px!important;accent-color:#2655d9}
+.admin-level-picker:disabled .admin-level-option{cursor:wait;opacity:.6}
