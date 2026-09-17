@@ -16,9 +16,10 @@ function setup(){
  let locked=false;
  const ctx=vm.createContext({Date,Math,Number,JSON,Set,Error,String,PropertiesService:{getScriptProperties:()=>({getProperty:k=>k==='SPREADSHEET_ID'?'test-sheet':'secret'.repeat(10)})},SpreadsheetApp:{openById:()=>db,flush(){}},LockService:{getScriptLock:()=>({tryLock(){if(locked)return false;locked=true;return true;},releaseLock(){locked=false;}})},Utilities:{getUuid:randomUUID},ContentService:{MimeType:{JSON:'application/json'},createTextOutput:s=>({setMimeType:()=>s})}});
  vm.runInContext(source,ctx);
- return {ctx,db,data,put,config:{latitude:18,longitude:99,radius:100,maxAccuracy:30},payload:{identity:'0001',level:'ปวช.1',latitude:18,longitude:99,accuracy:5,requestId:randomUUID()}};
+ return {ctx,db,data,put,config:{latitude:18,longitude:99,radius:100,maxAccuracy:30,lateMinute:510,absenceMinute:540},payload:{identity:'0001',level:'ปวช.1',latitude:18,longitude:99,accuracy:5,requestId:randomUUID()}};
 }
-test('inclusive Bangkok cutoffs and seconds',()=>{const {ctx}=setup();for(const [t,result] of [['08:29:59','present'],['08:30:00','late'],['08:59:59','late'],['09:00:00','absent']])assert.equal(ctx.classify_(when(t)),result);});
+test('inclusive Bangkok cutoffs and seconds',()=>{const {ctx,config}=setup();for(const [t,result] of [['08:29:59','present'],['08:30:00','late'],['08:59:59','late'],['09:00:00','absent']])assert.equal(ctx.classify_(when(t),config),result);});
+test('test cutoffs can be configured to 08:10 and 08:15',()=>{const {ctx}=setup(),c={lateMinute:490,absenceMinute:495};for(const [t,result] of [['08:09:59','present'],['08:10:00','late'],['08:14:59','late'],['08:15:00','absent']])assert.equal(ctx.classify_(when(t),c),result);});
 test('geofence rejects outside, uncertain and malformed coordinates',()=>{const {ctx,config,payload}=setup();assert.equal(ctx.location_(payload,config),0);assert.throws(()=>ctx.location_({...payload,latitude:19},config),e=>e.code==='OUTSIDE');assert.throws(()=>ctx.location_({...payload,accuracy:31},config),e=>e.code==='LOW_ACCURACY');assert.throws(()=>ctx.location_({...payload,latitude:18.0008,accuracy:20},config),e=>e.code==='UNCERTAIN');assert.throws(()=>ctx.location_({...payload,latitude:NaN},config),e=>e.code==='BAD_LOCATION');});
 test('first accepted arrival is preserved through repeated submissions',()=>{const {ctx,db,data,config,payload}=setup();assert.equal(ctx.checkIn_(db,config,payload,when('08:29:59')).receipt.status,'present');const repeated=ctx.checkIn_(db,config,payload,when('09:10:00'));assert.equal(repeated.receipt.status,'present');assert.equal(repeated.receipt.duplicate,true);assert.equal(data.Attendance.length,2);});
 test('first arrival at 09:00 records absent plus coordinates',()=>{const {ctx,db,data,config,payload}=setup();const r=ctx.checkIn_(db,config,payload,when('09:00:00'));assert.equal(r.receipt.status,'absent');assert.equal(data.Attendance[1][data.Attendance[0].indexOf('latitude')],18);});
@@ -30,7 +31,7 @@ test('missing coordinates fail closed; empty values are not treated as zero',()=
 test('unauthorized endpoint cannot expose student data',()=>{const {ctx}=setup();const r=JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({action:'config',secret:'wrong'})}}));assert.equal(r.code,'UNAUTHORIZED');assert.equal(r.config,undefined);});
 test('absence sweep batches missing eligible students and is idempotent',()=>{
  const {ctx,db,data,put}=setup();
- for(const [key,value] of Object.entries({schema_version:'class-v2',timezone:'Asia/Bangkok',room_name:'test room',latitude:'18',longitude:'99',radius_m:'100',max_accuracy_m:'30'}))put('Settings',{key,value});
+ for(const [key,value] of Object.entries({schema_version:'class-v2',timezone:'Asia/Bangkok',room_name:'test room',latitude:'18',longitude:'99',radius_m:'100',max_accuracy_m:'30',late_policy:'08:30',absence_policy:'09:00'}))put('Settings',{key,value});
  for(let i=2;i<=300;i++)put('Students',{student_id:'s'+i,student_code:String(i).padStart(4,'0'),full_name:'test '+i,class_level:'ปวช.1',status:'active'});
  put('Students',{student_id:'other',class_level:'ปวช.2',status:'active'});
  put('Attendance',{attendance_id:'first',session_id:'class1',student_id:'s1',status:'present',checked_at:when('08:00:00'),created_at:when('08:00:00')});

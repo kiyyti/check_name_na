@@ -1,0 +1,13 @@
+.env
+.env.*
+.sites-runtime/
+.openai/
+.wrangler/
+.agents/
+.codex/
+dist/
+node_modules/
+.next/
+*.tsbuildinfo
+outputs/
+work/

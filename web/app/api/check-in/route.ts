@@ -1,5 +1,7 @@
 import {sheets} from '@/lib/sheets-gateway';
 import {z} from 'zod';
+export const runtime='nodejs';
+export const maxDuration=60;
 const input=z.object({identity:z.string().trim().min(1).max(120),level:z.string().trim().min(1).max(50),requestId:z.string().uuid(),latitude:z.number().finite().min(-90).max(90),longitude:z.number().finite().min(-180).max(180),accuracy:z.number().finite().positive().max(100000)}).strict();
 export async function POST(req:Request){
  const headers={'Cache-Control':'no-store'};

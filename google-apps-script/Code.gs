@@ -6,7 +6,9 @@ function fail_(code,message){const error=new Error(message);error.code=code;thro
 function text_(v){return String(v==null?'':v).trim();}
 function normalized_(v){return text_(v).normalize('NFC').replace(/\s+/g,' ').toLocaleLowerCase();}
 function day_(date){return new Date(date.getTime()+7*3600000).toISOString().slice(0,10);}
-function classify_(date){const t=new Date(date.getTime()+7*3600000),m=t.getUTCHours()*60+t.getUTCMinutes();return m>=540?'absent':m>=510?'late':'present';}
+function timeMinutes_(value,key){const match=text_(value).match(/(?:^|\D)(\d{1,2}):(\d{2})(?:\D|$)/);if(!match)fail_('NOT_CONFIGURED','กรุณากำหนด '+key+' เป็นเวลา HH:MM');const h=Number(match[1]),m=Number(match[2]);if(h>23||m>59)fail_('NOT_CONFIGURED','เวลา '+key+' ไม่ถูกต้อง');return h*60+m;}
+function timeText_(minutes){return String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');}
+function classify_(date,c){const t=new Date(date.getTime()+7*3600000),m=t.getUTCHours()*60+t.getUTCMinutes();return m>=c.absenceMinute?'absent':m>=c.lateMinute?'late':'present';}
 function distance_(a,b,c,d){const rad=x=>x*Math.PI/180;const x=Math.sin(rad(c-a)/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(rad(d-b)/2)**2;return 6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(Math.max(0,1-x)));}
 function location_(p,c){
  if(!['latitude','longitude','accuracy'].every(k=>typeof p[k]==='number'&&Number.isFinite(p[k]))||Math.abs(p.latitude)>90||Math.abs(p.longitude)>180||p.accuracy<=0)fail_('BAD_LOCATION','ข้อมูลพิกัดไม่ถูกต้อง กรุณาลองระบุตำแหน่งใหม่');
@@ -28,8 +30,9 @@ function configuration_(db){
  if(c.schema_version!=='class-v2')fail_('NOT_CONFIGURED','กรุณาใช้โครงสร้างชีต class-v2');
  const fields=['room_name','latitude','longitude','radius_m','max_accuracy_m'];
  if(fields.some(k=>text_(c[k])===''))fail_('NOT_CONFIGURED','ยังไม่ได้กำหนดห้องเรียนและพิกัดสำหรับเช็คชื่อ');
- const cfg={room:text_(c.room_name),course:text_(c.course_name),latitude:Number(c.latitude),longitude:Number(c.longitude),radius:Number(c.radius_m),maxAccuracy:Number(c.max_accuracy_m)};
+ const cfg={room:text_(c.room_name),course:text_(c.course_name),latitude:Number(c.latitude),longitude:Number(c.longitude),radius:Number(c.radius_m),maxAccuracy:Number(c.max_accuracy_m),lateMinute:timeMinutes_(c.late_policy,'late_policy'),absenceMinute:timeMinutes_(c.absence_policy,'absence_policy')};
  if(![cfg.latitude,cfg.longitude,cfg.radius,cfg.maxAccuracy].every(Number.isFinite)||Math.abs(cfg.latitude)>90||Math.abs(cfg.longitude)>180||cfg.radius<=0||cfg.maxAccuracy<=0||cfg.maxAccuracy>cfg.radius)fail_('NOT_CONFIGURED','การตั้งค่าพิกัดหรือรัศมียังไม่ถูกต้อง');
+ if(cfg.absenceMinute<=cfg.lateMinute)fail_('NOT_CONFIGURED','เวลา absence_policy ต้องอยู่หลัง late_policy');
  if(c.timezone!=='Asia/Bangkok'||db.getSpreadsheetTimeZone()!=='Asia/Bangkok')fail_('NOT_CONFIGURED','กรุณาตั้งเขตเวลาชีตเป็น Asia/Bangkok');
  return cfg;
 }
@@ -72,7 +75,7 @@ function checkIn_(db,c,p,now){
   const collision=t.rows.find(r=>text_(r.request_id)===p.requestId);
   if(collision&&(text_(collision.student_id)!==text_(student.student_id)||text_(collision.session_id)!==text_(session.session_id)))fail_('CONFLICT','คำขอนี้ถูกใช้แล้ว กรุณาเปิดหน้าเช็คชื่อใหม่');
   const previous=existing[0];
-  const row={attendance_id:previous?previous.attendance_id:Utilities.getUuid(),session_id:session.session_id,student_id:student.student_id,status:previous?previous.status:classify_(now),checked_at:now,method:'qr',recorded_by:'self-reported',request_id:p.requestId,note:previous?previous.note:'',created_at:previous?previous.created_at:now,updated_at:now,class_level:p.level,latitude:p.latitude,longitude:p.longitude,accuracy_m:p.accuracy,distance_m:distance,location_status:'inside'};
+  const row={attendance_id:previous?previous.attendance_id:Utilities.getUuid(),session_id:session.session_id,student_id:student.student_id,status:previous?previous.status:classify_(now,c),checked_at:now,method:'qr',recorded_by:'self-reported',request_id:p.requestId,note:previous?previous.note:'',created_at:previous?previous.created_at:now,updated_at:now,class_level:p.level,latitude:p.latitude,longitude:p.longitude,accuracy_m:p.accuracy,distance_m:distance,location_status:'inside'};
   write_(t,row,previous?previous._row:null);SpreadsheetApp.flush();
   return {ok:true,receipt:receipt_(row,false)};
  }finally{lock.releaseLock();}
@@ -86,7 +89,7 @@ function doPost(e){
   if(body.action==='config'){
    const levels=[...new Set(table_(db,'Students').rows.filter(r=>text_(r.status)==='active').map(r=>text_(r.class_level)).filter(Boolean))].sort();
    const active=table_(db,'Sessions').rows.some(r=>{const w=sessionWindow_(r);return r.status==='open'&&w&&day_(w.start)===day_(now)&&now>=w.open&&now<=w.close;});
-   result={ok:true,config:{ready:!!levels.length&&active,levels,room:c.room,course:c.course,message:levels.length?'ยังไม่มีรอบเช็คชื่อที่เปิดในขณะนี้':'ยังไม่มีรายชื่อผู้เรียนในระบบ'}};
+   result={ok:true,config:{ready:!!levels.length&&active,levels,room:c.room,course:c.course,lateTime:timeText_(c.lateMinute),absenceTime:timeText_(c.absenceMinute),message:levels.length?'ยังไม่มีรอบเช็คชื่อที่เปิดในขณะนี้':'ยังไม่มีรายชื่อผู้เรียนในระบบ'}};
   }else if(body.action==='checkIn')result=checkIn_(db,c,body.payload,now);
   else fail_('BAD_INPUT','คำขอไม่ถูกต้อง');
   return json_(result);
@@ -98,8 +101,7 @@ function json_(value){return ContentService.createTextOutput(JSON.stringify(valu
  * Existing present, late, absent, or teacher-approved excused is preserved.
  */
 function finalizeAbsences(){
- const now=new Date();if(classify_(now)!=='absent')return;
- const db=db_();configuration_(db);
+ const now=new Date(),db=db_(),c=configuration_(db);if(classify_(now,c)!=='absent')return;
  const sessions=table_(db,'Sessions').rows.filter(r=>{const w=sessionWindow_(r);return ['open','closed'].includes(r.status)&&w&&day_(w.start)===day_(now)&&now>=w.start;});
  const students=table_(db,'Students').rows,lock=LockService.getScriptLock();if(!lock.tryLock(8000))return;
  try{const t=table_(db,'Attendance'),keys=new Set(t.rows.map(r=>text_(r.session_id)+'|'+text_(r.student_id))),rows=[];
